@@ -19,7 +19,6 @@ from typing import Optional
 
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
-from astrbot.api.config import AstrBotConfig
 from astrbot.api import logger
 
 from .config import ConfigManager
@@ -35,7 +34,7 @@ from .handlers.admin import AdminHandler
 class HaimengCodePlugin(Star):
     """海梦酱码管理插件"""
     
-    def __init__(self, context: Context, config: AstrBotConfig):
+    def __init__(self, context: Context, config=None):
         super().__init__(context)
         self.context = context
         self.plugin_config = config
