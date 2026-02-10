@@ -211,6 +211,11 @@ class HaimengCodePlugin(Star):
         response = await self.user_handler.handle(event, qq, message)
         if response:
             yield event.plain_result(response)
+            return
+        
+        # 兜底：消费所有未处理的私聊消息，防止AI回复无关内容
+        trigger = self.config_mgr.get_trigger_keyword()
+        yield event.plain_result(f"💡 发送「{trigger}」开始使用")
     
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
