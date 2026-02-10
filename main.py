@@ -183,7 +183,7 @@ class HaimengCodePlugin(Star):
         message = event.message_str.strip()
         qq = str(event.get_sender_id())
         
-        # 管理员消息处理
+        # 管理员消息处理（拦截所有管理员私聊，阻止AI回复）
         if self.config_mgr.is_admin(qq):
             response = await self.admin_handler.handle(qq, message)
             if response:
@@ -194,7 +194,10 @@ class HaimengCodePlugin(Star):
                         await asyncio.sleep(0.5)  # 避免QQ消息限流
                 else:
                     yield event.plain_result(response)
-                return
+            else:
+                # 管理员发了不认识的消息，也要消费掉，防止AI抢回复
+                yield event.plain_result("💡 发送 jiu 打开控制面板")
+            return
         
         # 插件关闭时不响应普通用户
         if not self.config_mgr.is_enabled():
