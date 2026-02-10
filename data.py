@@ -968,6 +968,23 @@ class DataManager:
                 return True
             return False
     
+    def clear_lottery_pool(self, include_event: bool = True) -> dict:
+        """一键清除所有抽奖卡池未使用的兑换码"""
+        with self._lock:
+            cleared = {}
+            for tier in ["gold", "purple", "blue"]:
+                count = len(self.data["lottery_pool"][tier]["unused"])
+                self.data["lottery_pool"][tier]["unused"] = []
+                cleared[tier] = count
+            
+            if include_event:
+                count = len(self.data["event_pool"]["cards"]["unused"])
+                self.data["event_pool"]["cards"]["unused"] = []
+                cleared["event"] = count
+            
+            self._save_atomic()
+            return cleared
+    
     def reset_user_lottery_data(self, qq: str) -> bool:
         """重置用户抽奖数据"""
         with self._lock:

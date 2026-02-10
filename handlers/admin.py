@@ -147,7 +147,7 @@ class AdminHandler:
             if message.upper().startswith("3-"):
                 self.session.set(qq, "stock_menu_viewed", is_admin=True)
                 return self._handle_stock_action(qq, message)
-            return "❌ 无效操作，请使用 3-G/P/B/R 查看库存\n\n💡 D=返回上级 Q=返回主菜单"
+            return "❌ 无效操作，请使用 3-G/P/B/R/C\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state in ("user_menu", "user_menu_viewed"):
             if message.upper().startswith("4-"):
@@ -388,7 +388,8 @@ class AdminHandler:
 回复 3-G 查看金卡列表
 回复 3-P 查看紫卡列表
 回复 3-B 查看蓝卡列表
-回复 3-R 查看注册码列表"""
+回复 3-R 查看注册码列表
+回复 3-C 🗑️ 一键清除全部兑换码"""
         
         return msg
     
@@ -634,6 +635,23 @@ class AdminHandler:
             if total_count > len(codes):
                 msg += f"\n... 仅显示前 {len(codes)} 个（脱敏）"
             
+            return msg
+        
+        if action_upper == "3-C":
+            cleared = self.data.clear_lottery_pool(include_event=True)
+            total = sum(cleared.values())
+            if total == 0:
+                return "🗑️ 卡池已是空的，无需清除"
+            
+            msg = f"🗑️ 【已清除全部兑换码】\n\n"
+            msg += f"🥇 金卡: {cleared.get('gold', 0)} 个\n"
+            msg += f"💜 紫卡: {cleared.get('purple', 0)} 个\n"
+            msg += f"💙 蓝卡: {cleared.get('blue', 0)} 个\n"
+            if cleared.get('event', 0) > 0:
+                msg += f"🎪 活动卡: {cleared['event']} 个\n"
+            msg += f"\n共清除 {total} 个兑换码"
+            
+            self.data.log_action("清除卡池", qq, f"清除{total}个兑换码")
             return msg
         
         return "❌ 无效操作"
