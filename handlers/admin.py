@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """管理员消息处理模块"""
 
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 
 from ..config import ConfigManager
@@ -22,7 +22,53 @@ class AdminHandler:
         self.lottery = lottery_engine
         self.group_manager = group_manager  # 群成员管理器
     
-    async def handle(self, qq: str, message: str) -> Optional[str]:
+    # ==================== 菜单层级导航 ====================
+    # D=回退一级  D2=回退两级  Q=返回主菜单  不输入=保活留在当前菜单
+    
+    STATE_PARENT = {
+        "admin_menu": None,
+        "stock_menu": "admin_menu",
+        "user_menu": "admin_menu",
+        "blacklist_menu": "admin_menu",
+        "time_menu": "admin_menu",
+        "announcement_menu": "admin_menu",
+        "lottery_config_menu": "admin_menu",
+        "event_menu": "admin_menu",
+        "add_reg_codes": "admin_menu",
+        "select_lottery_tier": "admin_menu",
+        "set_announcement": "announcement_menu",
+        "import_users": "user_menu",
+    }
+    
+    def _get_parent_state(self, state: str) -> Optional[str]:
+        """获取上级菜单状态"""
+        if state and state.startswith("add_lottery_"):
+            return "select_lottery_tier"
+        return self.STATE_PARENT.get(state)
+    
+    def _get_menu_display(self, qq: str, state: str) -> str:
+        """获取指定菜单状态的展示文本"""
+        if state == "admin_menu":
+            return Templates.ADMIN_MENU
+        elif state == "stock_menu":
+            return self._show_stock_menu()
+        elif state == "user_menu":
+            return self._show_user_menu()
+        elif state == "blacklist_menu":
+            return self._show_blacklist_menu()
+        elif state == "time_menu":
+            return self._show_time_menu()
+        elif state == "announcement_menu":
+            return self._show_announcement_menu(qq)
+        elif state == "lottery_config_menu":
+            return self._show_lottery_config()
+        elif state == "event_menu":
+            return self._show_event_pool_menu()
+        elif state == "select_lottery_tier":
+            return Templates.ADMIN_ADD_LOTTERY_SELECT
+        return Templates.ADMIN_MENU
+    
+    async def handle(self, qq: str, message: str) -> Optional[Union[str, List[str]]]:
         """处理管理员消息"""
         lines = message.split('\n')
         cmd = lines[0].strip()
@@ -37,11 +83,28 @@ class AdminHandler:
         if session:
             state = session.get("state")
             context = session.get("context", {})
+            upper_msg = message.upper().strip()
             
-            # 取消操作
-            if message.upper() == "Q":
-                self.session.clear(qq, is_admin=True)
-                return Templates.CANCEL_OK
+            # Q = 返回主菜单
+            if upper_msg == "Q":
+                self.session.set(qq, "admin_menu", is_admin=True)
+                return "↩️ 已返回主菜单\n\n" + Templates.ADMIN_MENU
+            
+            # D = 回退一级
+            if upper_msg == "D":
+                parent = self._get_parent_state(state)
+                if parent:
+                    self.session.set(qq, parent, is_admin=True)
+                    return "↩️ 已返回上级\n\n" + self._get_menu_display(qq, parent)
+                return "📍 已在主菜单，无法继续回退"
+            
+            # D2 = 回退两级
+            if upper_msg == "D2":
+                parent = self._get_parent_state(state)
+                grand = self._get_parent_state(parent) if parent else None
+                target = grand or parent or "admin_menu"
+                self.session.set(qq, target, is_admin=True)
+                return "↩️ 已返回\n\n" + self._get_menu_display(qq, target)
             
             # 处理各种会话状态
             return await self._handle_session_state(qq, message, lines, state, context)
@@ -49,79 +112,73 @@ class AdminHandler:
         # 不在会话中，尝试处理快捷命令
         return await self._handle_quick_command(qq, message, lines)
     
-    async def _handle_session_state(self, qq: str, message: str, lines: List[str], state: str, context: dict) -> Optional[str]:
-        """处理会话状态"""
+    async def _handle_session_state(self, qq: str, message: str, lines: List[str], state: str, context: dict) -> Optional[Union[str, List[str]]]:
+        """处理会话状态（保活：操作后留在当前菜单，输入态回到上级）"""
         if state == "admin_menu":
             return await self._handle_menu_choice(qq, message, lines)
+        
+        # ========== 输入状态（完成后回到上级）==========
         elif state == "add_reg_codes":
-            self.session.clear(qq, is_admin=True)
+            self.session.set(qq, "admin_menu", is_admin=True)
             return self._add_codes(message, "registration")
         elif state == "select_lottery_tier":
             return self._handle_tier_select(qq, message)
         elif state.startswith("add_lottery_"):
             tier = state.replace("add_lottery_", "")
-            self.session.clear(qq, is_admin=True)
+            self.session.set(qq, "admin_menu", is_admin=True)
             return self._add_lottery_codes(message, tier)
         elif state == "set_announcement":
-            self.session.clear(qq, is_admin=True)
+            self.session.set(qq, "announcement_menu", is_admin=True)
             return self._set_announcement(message)
+        elif state == "import_users":
+            self.session.set(qq, "user_menu", is_admin=True)
+            return self._import_users(message)
 
-        # ========== 子菜单状态处理 ==========
+        # ========== 子菜单状态（保活：操作后留在当前菜单）==========
         elif state == "stock_menu":
-            # 库存菜单：处理 3-X 命令
             if message.upper().startswith("3-"):
-                self.session.clear(qq, is_admin=True)
                 return self._handle_stock_action(qq, message)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 3-G/P/B/R 查看库存"
+            return "❌ 无效操作，请使用 3-G/P/B/R 查看库存\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state == "user_menu":
-            # 用户菜单：处理 4-X 命令
             if message.upper().startswith("4-"):
-                self.session.clear(qq, is_admin=True)
+                if message.upper() == "4-5":
+                    self.session.set(qq, "import_users", is_admin=True)
+                    return """📥 【导入已注册用户】
+
+请回复要导入的 QQ 号列表
+每行一个 QQ 号
+
+导入后这些用户将无法再领取注册码
+
+💡 D=返回上级 Q=返回主菜单"""
                 return self._handle_user_action(qq, message, lines)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 4-1/2/3/4 QQ号"
+            return "❌ 无效操作，请使用 4-1/2/3/4/5/6\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state == "blacklist_menu":
-            # 黑名单菜单：处理 6-X 命令
             if message.upper().startswith("6-"):
-                self.session.clear(qq, is_admin=True)
                 return self._handle_blacklist_action(message, lines)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 6-1/2/3 QQ号"
+            return "❌ 无效操作，请使用 6-1/2/3 QQ号\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state == "time_menu":
-            # 时间菜单：处理 7-X 命令
             if message.upper().startswith("7-"):
-                self.session.clear(qq, is_admin=True)
                 return self._handle_time_action(message, lines)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 7-1 周X 或 7-2 小时"
+            return "❌ 无效操作，请使用 7-1 周X 或 7-2 小时\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state == "announcement_menu":
-            # 公告菜单：处理 8-X 命令
             if message.upper().startswith("8-"):
-                self.session.clear(qq, is_admin=True)
                 return self._handle_announcement_action(qq, message)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 8-1 设置公告 或 8-2 清空"
+            return "❌ 无效操作，请使用 8-1 设置公告 或 8-2 清空\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state == "lottery_config_menu":
-            # 抽奖配置菜单：处理 10-X 命令
             if message.upper().startswith("10-"):
-                self.session.clear(qq, is_admin=True)
                 return self._handle_lottery_config_action(message, lines)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 10-G/P/B/T/W/D 数值"
+            return "❌ 无效操作，请使用 10-G/P/B/T/W/D 数值\n\n💡 D=返回上级 Q=返回主菜单"
         
         elif state == "event_menu":
-            # 活动卡池菜单：处理 E-X 命令
             if message.upper().startswith("E-"):
-                self.session.clear(qq, is_admin=True)
                 return self._handle_event_pool_action(message, lines)
-            self.session.clear(qq, is_admin=True)
-            return "❌ 无效操作，请使用 E-1/E-2/E-3"
+            return "❌ 无效操作，请使用 E-1/E-2/E-3\n\n💡 D=返回上级 Q=返回主菜单"
         
         return None
     
@@ -336,7 +393,9 @@ class AdminHandler:
 回复 4-1 查看用户列表
 回复 4-2 QQ号 查询用户
 回复 4-3 QQ号 重置用户
-回复 4-4 QQ号 清空抽奖数据"""
+回复 4-4 QQ号 清空抽奖数据
+回复 4-5 批量导入用户
+回复 4-6 📤 导出全部用户"""
     
     def _show_statistics(self) -> str:
         """显示统计（通过DataManager公共API）"""
@@ -564,7 +623,7 @@ class AdminHandler:
         
         return "❌ 无效操作"
     
-    def _handle_user_action(self, qq: str, action: str, lines: List[str]) -> str:
+    def _handle_user_action(self, qq: str, action: str, lines: List[str]) -> Union[str, List[str]]:
         """处理用户管理操作（通过DataManager公共API）"""
         parts = action.split(" ", 1)
         cmd = parts[0]
@@ -612,6 +671,10 @@ class AdminHandler:
             if self.data.reset_user_lottery_data(user_qq):
                 return f"✅ 已清空用户 {user_qq} 的抽奖数据"
             return f"❌ 用户 {user_qq} 无抽奖记录"
+        
+        elif cmd == "4-6":
+            # 导出全部用户
+            return self._export_users()
         
         return "❌ 格式错误\n示例: 4-2 123456"
     
@@ -730,7 +793,7 @@ class AdminHandler:
         
         return "❌ 无效操作"
     
-    async def _handle_quick_command(self, qq: str, message: str, lines: List[str]) -> Optional[str]:
+    async def _handle_quick_command(self, qq: str, message: str, lines: List[str]) -> Optional[Union[str, List[str]]]:
         """处理快捷命令"""
         cmd = lines[0].strip()
         
@@ -795,6 +858,8 @@ class AdminHandler:
             if target_qq:
                 return self._handle_blacklist_action(f"6-2 {target_qq}", lines)
             return "❌ 格式: jiu解黑 QQ号"
+        elif cmd == "jiu导出":
+            return self._export_users()
         elif cmd.startswith("jiu时间"):
             # jiu时间 周X X / jiu时间 每周X X点
             args = cmd.replace("jiu时间", "").strip()
@@ -891,3 +956,61 @@ class AdminHandler:
 总计: {total_count} 个"""
         
         return "❌ 无效操作，请使用 E-1/E-2/E-3"
+    
+    # ==================== 用户导入/导出 ====================
+    
+    def _import_users(self, message: str) -> str:
+        """处理批量导入用户"""
+        qq_list = [line.strip() for line in message.split('\n') if line.strip()]
+        if not qq_list:
+            return "❌ 未检测到有效的 QQ 号"
+        
+        # 过滤非数字
+        valid_list = [qq for qq in qq_list if qq.isdigit()]
+        invalid_count = len(qq_list) - len(valid_list)
+        if not valid_list:
+            return "❌ 未检测到有效的 QQ 号（QQ号应为纯数字）"
+        
+        result = self.data.import_registered_users(valid_list)
+        self.data.log_action("批量导入用户", "ADMIN", f"新增{result['added']}人，跳过{result['skipped']}人")
+        
+        msg = f"""✅ 导入完成！
+
+📊 结果:
+├ 新增: {result['added']} 人
+└ 跳过（已注册）: {result['skipped']} 人"""
+        if invalid_count > 0:
+            msg += f"\n⚠️ 跳过 {invalid_count} 个非数字项"
+        return msg
+    
+    def _export_users(self) -> Union[str, List[str]]:
+        """导出全部用户数据（分批发送，每批50个，适配QQ消息长度限制）"""
+        users = self.data.get_all_registered_users()
+        total = len(users)
+        
+        if total == 0:
+            return "📋 暂无注册用户可导出"
+        
+        BATCH_SIZE = 50
+        batches = []
+        total_batches = (total + BATCH_SIZE - 1) // BATCH_SIZE
+        
+        for i in range(0, total, BATCH_SIZE):
+            batch = users[i:i + BATCH_SIZE]
+            batch_num = i // BATCH_SIZE + 1
+            
+            header = f"📤 【用户导出】({batch_num}/{total_batches}) 共 {total} 人\n"
+            header += f"第 {i + 1}-{min(i + BATCH_SIZE, total)} 个\n"
+            header += "━━━━━━━━━━━━━━━━━\n"
+            
+            lines = []
+            for user_qq, info in batch:
+                lines.append(user_qq)
+            
+            batches.append(header + "\n".join(lines))
+        
+        # 在最后一批追加提示
+        batches[-1] += f"\n━━━━━━━━━━━━━━━━━\n✅ 导出完毕，共 {total} 人\n💡 可复制 QQ 号列表用于 4-5 批量导入"
+        
+        self.data.log_action("导出用户数据", "ADMIN", f"共{total}人，分{total_batches}批")
+        return batches

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-海梦酱码管理系统 v2.2.0
+海梦酱码管理系统 v2.2.1
 AstrBot 插件 - 智能管理注册码和抽奖兑换码
 
 功能特性:
@@ -30,7 +30,7 @@ from .handlers.user import UserHandler
 from .handlers.admin import AdminHandler
 
 
-@register("astrbot_plugin_haimeng_code", "久", "海梦酱码管理系统 - 智能抽奖发码", "2.2.0")
+@register("astrbot_plugin_haimeng_code", "久", "海梦酱码管理系统 - 智能抽奖发码", "2.2.1")
 class HaimengCodePlugin(Star):
     """海梦酱码管理插件"""
     
@@ -74,7 +74,7 @@ class HaimengCodePlugin(Star):
         # 清理标记
         self._terminated = False
         
-        logger.info("[海梦酱] 插件加载成功！v2.2.0")
+        logger.info("[海梦酱] 插件加载成功！v2.2.1")
     
     def _do_cleanup(self):
         """执行清理逻辑（去重保护，同步安全）"""
@@ -187,7 +187,13 @@ class HaimengCodePlugin(Star):
         if self.config_mgr.is_admin(qq):
             response = await self.admin_handler.handle(qq, message)
             if response:
-                yield event.plain_result(response)
+                # 支持批量消息（如用户导出分批发送）
+                if isinstance(response, list):
+                    for msg in response:
+                        yield event.plain_result(msg)
+                        await asyncio.sleep(0.5)  # 避免QQ消息限流
+                else:
+                    yield event.plain_result(response)
                 return
         
         # 插件关闭时不响应普通用户

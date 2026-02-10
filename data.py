@@ -921,6 +921,37 @@ class DataManager:
             items = list(self.data["registered_users"].items())[:limit]
             return [(qq, copy.deepcopy(info)) for qq, info in items]
     
+    def get_all_registered_users(self) -> List[Tuple[str, dict]]:
+        """获取全部注册用户列表（用于导出，无数量限制）"""
+        with self._lock:
+            items = list(self.data["registered_users"].items())
+            return [(qq, copy.deepcopy(info)) for qq, info in items]
+    
+    def import_registered_users(self, qq_list: List[str]) -> dict:
+        """批量导入已注册用户（标记为已注册，不消耗注册码）"""
+        with self._lock:
+            added = 0
+            skipped = 0
+            now = datetime.now().isoformat()
+            
+            for qq in qq_list:
+                qq = qq.strip()
+                if not qq:
+                    continue
+                if qq in self.data["registered_users"]:
+                    skipped += 1
+                    continue
+                self.data["registered_users"][qq] = {
+                    "reg_code": "已导入",
+                    "reg_time": now
+                }
+                added += 1
+            
+            if added > 0:
+                self._save_atomic()
+            
+            return {"added": added, "skipped": skipped}
+    
     def reset_user_registration(self, qq: str) -> bool:
         """重置用户注册（保留 used 占用防止一码多发，标记 revoked）"""
         with self._lock:
