@@ -54,20 +54,26 @@ class UserHandler:
     
     async def _handle_menu_choice(self, event: AstrMessageEvent, qq: str, choice: str) -> str:
         """处理菜单选择"""
-        self.session.clear(qq)
+        menu_hint = "\n\n━━━━━━━━━━━━━━━━━\n💡 继续回复 1-6 选择其他服务，回复 Q 退出"
         
         if choice == "1":
-            return await self._get_registration_code(event, qq)
+            result = await self._get_registration_code(event, qq)
+            self.session.set(qq, "menu")
+            return result + menu_hint
         elif choice == "2":
             return await self._start_lottery(event, qq)
         elif choice == "3":
-            return self.lottery.get_pool_info()
+            self.session.set(qq, "menu")
+            return self.lottery.get_pool_info() + menu_hint
         elif choice == "4":
-            return self._get_my_info(qq)
+            self.session.set(qq, "menu")
+            return self._get_my_info(qq) + menu_hint
         elif choice == "5":
-            return self._get_announcement()
+            self.session.set(qq, "menu")
+            return self._get_announcement() + menu_hint
         elif choice == "6":
-            return Templates.USER_HELP
+            self.session.set(qq, "menu")
+            return Templates.USER_HELP + menu_hint
         else:
             self.session.set(qq, "menu")
             return Templates.ERROR_INVALID_CHOICE + "\n\n" + Templates.USER_MENU
