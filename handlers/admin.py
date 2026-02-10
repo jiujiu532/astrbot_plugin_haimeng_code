@@ -38,6 +38,14 @@ class AdminHandler:
         "select_lottery_tier": "admin_menu",
         "set_announcement": "announcement_menu",
         "import_users": "user_menu",
+        # _viewed 状态：执行子命令后进入，D 回退到对应菜单
+        "stock_menu_viewed": "stock_menu",
+        "user_menu_viewed": "user_menu",
+        "blacklist_menu_viewed": "blacklist_menu",
+        "time_menu_viewed": "time_menu",
+        "announcement_menu_viewed": "announcement_menu",
+        "lottery_config_menu_viewed": "lottery_config_menu",
+        "event_menu_viewed": "event_menu",
     }
     
     def _get_parent_state(self, state: str) -> Optional[str]:
@@ -134,13 +142,14 @@ class AdminHandler:
             self.session.set(qq, "user_menu", is_admin=True)
             return self._import_users(message)
 
-        # ========== 子菜单状态（保活：操作后留在当前菜单）==========
-        elif state == "stock_menu":
+        # ========== 子菜单状态（保活 + 执行后进入 _viewed 状态）==========
+        elif state in ("stock_menu", "stock_menu_viewed"):
             if message.upper().startswith("3-"):
+                self.session.set(qq, "stock_menu_viewed", is_admin=True)
                 return self._handle_stock_action(qq, message)
             return "❌ 无效操作，请使用 3-G/P/B/R 查看库存\n\n💡 D=返回上级 Q=返回主菜单"
         
-        elif state == "user_menu":
+        elif state in ("user_menu", "user_menu_viewed"):
             if message.upper().startswith("4-"):
                 if message.upper() == "4-5":
                     self.session.set(qq, "import_users", is_admin=True)
@@ -152,31 +161,37 @@ class AdminHandler:
 导入后这些用户将无法再领取注册码
 
 💡 D=返回上级 Q=返回主菜单"""
+                self.session.set(qq, "user_menu_viewed", is_admin=True)
                 return self._handle_user_action(qq, message, lines)
             return "❌ 无效操作，请使用 4-1/2/3/4/5/6\n\n💡 D=返回上级 Q=返回主菜单"
         
-        elif state == "blacklist_menu":
+        elif state in ("blacklist_menu", "blacklist_menu_viewed"):
             if message.upper().startswith("6-"):
+                self.session.set(qq, "blacklist_menu_viewed", is_admin=True)
                 return self._handle_blacklist_action(message, lines)
             return "❌ 无效操作，请使用 6-1/2/3 QQ号\n\n💡 D=返回上级 Q=返回主菜单"
         
-        elif state == "time_menu":
+        elif state in ("time_menu", "time_menu_viewed"):
             if message.upper().startswith("7-"):
+                self.session.set(qq, "time_menu_viewed", is_admin=True)
                 return self._handle_time_action(message, lines)
             return "❌ 无效操作，请使用 7-1 周X 或 7-2 小时\n\n💡 D=返回上级 Q=返回主菜单"
         
-        elif state == "announcement_menu":
+        elif state in ("announcement_menu", "announcement_menu_viewed"):
             if message.upper().startswith("8-"):
+                self.session.set(qq, "announcement_menu_viewed", is_admin=True)
                 return self._handle_announcement_action(qq, message)
             return "❌ 无效操作，请使用 8-1 设置公告 或 8-2 清空\n\n💡 D=返回上级 Q=返回主菜单"
         
-        elif state == "lottery_config_menu":
+        elif state in ("lottery_config_menu", "lottery_config_menu_viewed"):
             if message.upper().startswith("10-"):
+                self.session.set(qq, "lottery_config_menu_viewed", is_admin=True)
                 return self._handle_lottery_config_action(message, lines)
             return "❌ 无效操作，请使用 10-G/P/B/T/W/D 数值\n\n💡 D=返回上级 Q=返回主菜单"
         
-        elif state == "event_menu":
+        elif state in ("event_menu", "event_menu_viewed"):
             if message.upper().startswith("E-"):
+                self.session.set(qq, "event_menu_viewed", is_admin=True)
                 return self._handle_event_pool_action(message, lines)
             return "❌ 无效操作，请使用 E-1/E-2/E-3\n\n💡 D=返回上级 Q=返回主菜单"
         
