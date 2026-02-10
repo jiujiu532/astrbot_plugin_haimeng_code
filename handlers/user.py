@@ -42,7 +42,7 @@ class UserHandler:
         # 取消操作
         if message.upper() == "Q":
             self.session.clear(qq)
-            return Templates.CANCEL_OK
+            return Templates.CANCEL_OK + Templates.USER_MINI_MENU
         
         # 分发处理
         if state == "menu":
@@ -54,7 +54,7 @@ class UserHandler:
     
     async def _handle_menu_choice(self, event: AstrMessageEvent, qq: str, choice: str) -> str:
         """处理菜单选择"""
-        menu_hint = "\n\n━━━━━━━━━━━━━━━━━\n💡 继续回复 1-6 选择其他服务，回复 Q 退出"
+        menu_hint = Templates.USER_MINI_MENU
         
         if choice == "1":
             result = await self._get_registration_code(event, qq)
@@ -131,7 +131,7 @@ class UserHandler:
         
         # 检查发放时间
         if not self.config.is_in_exchange_time():
-            return self._get_time_info()
+            return self._get_time_info() + Templates.USER_MINI_MENU
         
         # 检查是否可以抽奖
         can_draw, reason = self.data.can_draw_lottery(qq)
@@ -145,22 +145,23 @@ class UserHandler:
     
     async def _handle_lottery_confirm(self, event: AstrMessageEvent, qq: str, message: str) -> str:
         """处理抽奖确认"""
-        self.session.clear(qq)
-        
         if message.upper() != "GO":
-            return "❌ 已取消抽奖"
+            self.session.set(qq, "menu")
+            return "❌ 已取消抽奖" + Templates.USER_MINI_MENU
         
         # 执行抽奖
         tier, code, msg = self.lottery.draw(qq, self.config.is_test_mode())
         
         if not tier:
-            return f"❌ {msg}"
+            self.session.set(qq, "menu")
+            return f"❌ {msg}" + Templates.USER_MINI_MENU
         
         # 记录日志（不含明文码）
         tier_name = TIER_INFO.get(tier, {}).get("name", tier)
         self.data.log_action("抽奖", qq, f"抽中{tier_name}")
         
-        return self.lottery.get_draw_result_message(tier, code, qq)
+        self.session.set(qq, "menu")
+        return self.lottery.get_draw_result_message(tier, code, qq) + Templates.USER_MINI_MENU
     
     def _get_my_info(self, qq: str) -> str:
         """获取个人信息"""
