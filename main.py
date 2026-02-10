@@ -28,6 +28,7 @@ from .utils.group_manager import GroupMemberManager, GroupVerifier
 from .lottery.engine import LotteryEngine
 from .handlers.user import UserHandler
 from .handlers.admin import AdminHandler
+from .utils.templates import Templates
 
 
 @register("astrbot_plugin_haimeng_code", "久", "海梦酱码管理系统 - 智能抽奖发码", "2.2.1")
@@ -210,7 +211,7 @@ class HaimengCodePlugin(Star):
         # 用户消息处理
         response = await self.user_handler.handle(event, qq, message)
         if response:
-            yield event.plain_result(response)
+            yield event.plain_result(Templates.USER_WARNING + response)
             return
         
         # 兜底：消费所有未处理的私聊消息，防止AI回复无关内容
